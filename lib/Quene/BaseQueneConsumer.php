@@ -12,6 +12,8 @@ class BaseQueneConsumer extends Worker
      */
     protected static $_router = [];
 
+    protected static $_exchanges = [];
+
     /**
      * 日志存储位置
      * @var string
