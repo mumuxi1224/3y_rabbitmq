@@ -1,0 +1,24 @@
+{
+    "name": "mumuxi1224/3y_rabbitmq",
+    "description": "a package about rabbitmq",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "mumuxi1224",
+            "email": "158563518@qq.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "php":">=7",
+        "workerman/workerman": "dev-master"
+    },
+    "autoload":{
+        "psr-4":{
+            "Mmx\\Quene\\": "lib/Quene",
+            "Mmx\\Core\\": "lib/Core",
+            "Test\\":"test"
+        }
+    }
+}
