@@ -129,7 +129,6 @@ class BaseQueneConsumer extends Worker
                 if ($env) {
                     try {
                         //get 非阻塞调用  consume 阻塞调用
-                        throw new \Exception('testErr');
                         $res = call_user_func([$rv, 'consume'], $env->getBody());
                         if ($res) {
                             //ack

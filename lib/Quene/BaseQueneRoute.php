@@ -51,7 +51,7 @@ abstract class BaseQueneRoute extends Instance
     }
 
     /**
-     * 每次执行消费的间隔时间 大于0时是非阻塞式调用 等于0是是阻塞式调用
+     * 每次执行消费的间隔时间
      * @var float
      */
     protected $time_interval = 0.1;
