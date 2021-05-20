@@ -21,7 +21,7 @@ abstract class BaseQueneRoute extends Instance
      * 交换机类型
      * @var string
      */
-    protected $exchange_type;
+    protected $exchange_type = AMQP_EX_TYPE_DIRECT;
 
     final public function getExchangeType()
     {
@@ -72,15 +72,6 @@ abstract class BaseQueneRoute extends Instance
         return (bool)$this->durable;
     }
 
-    /**
-     * @var string
-     */
-    protected $logPath = 'log';
-
-    final public function getLogPath()
-    {
-        return (string)$this->logPath;
-    }
 
 //    abstract function consume(\AMQPEnvelope $env,\AMQPQueue $quene);
 
@@ -107,16 +98,6 @@ abstract class BaseQueneRoute extends Instance
      * @param string $message
      */
     public function onSuccess(string $message)
-    {
-
-    }
-
-    /**
-     * 处理异常后的回调
-     * @param \Exception $exception
-     * @param string $message
-     */
-    public function onError(\Exception $exception, string $message)
     {
 
     }

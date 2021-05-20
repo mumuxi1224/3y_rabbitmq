@@ -5,6 +5,7 @@ namespace Mmx\Quene;
 use Mmx\Core\Tool;
 use Workerman\Timer;
 use Workerman\Worker;
+use Workerman\Stomp\Client;
 
 class BaseQueneConsumer extends Worker
 {
@@ -14,15 +15,18 @@ class BaseQueneConsumer extends Worker
     protected static $_router = [];
 
     /**
-     * @var \AMQPQueue
+     * @var string
      */
-    protected $_queue;
+    public $_log_path = null;
 
     /**
      * @var \AMQPConnection
      */
     protected $client = null;
 
+    protected $stompClient = null;
+
+    protected $_rabbitMqConfig = [];
     /**
      * 定时器id
      * @var array
@@ -32,6 +36,7 @@ class BaseQueneConsumer extends Worker
     public function __construct(array $rabbitMq = [])
     {
         parent::__construct();
+        $this->_rabbitMqConfig = $rabbitMq;
         $this->_checkConnection($rabbitMq);
     }
 
@@ -104,6 +109,22 @@ class BaseQueneConsumer extends Worker
         exit;
     }
 
+    /**
+     * 日志
+     * @param $log
+     * @param $tag
+     * @param string $module
+     */
+    protected function _log($log, $tag, $module = 'consume')
+    {
+        if ($this->_log_path) {
+            if ($log instanceof \Exception) {
+                $log = "{$log->getCode()} : {$log->getMessage()}";
+            }
+            Tool::log($module, $log, $this->_log_path, $tag);
+        }
+    }
+
     public function run()
     {
         $this->onWorkerStart = [$this, 'onWorkerStart'];
@@ -111,42 +132,111 @@ class BaseQueneConsumer extends Worker
         parent::run();
     }
 
-
     public function onWorkerStart(Worker $worker)
     {
         if (empty(self::$_router)) {
             $this->_exit('', 'empty router');
         }
         static::safeEcho(" ----------------------- work start ----------------------------- \r\n");
-        $this->client = BaseRabbitmq::instance();
-        //注册定时消费任务
-        foreach (self::$_router as $rk => $rv) {
-            $this->_queue[$rk]  = $this->client->createQueue($rk, $rv);
-            $this->_timer_ids[] = Timer::add($rv->getTimeInterval(), function () use ($rk, $rv) {
-                //get 非阻塞调用  consume 阻塞调用
-                //get默认手动ack即AMQP_NOPARM 如果要自动ack则:AMQP_AUTOACK
-                $env = $this->_queue[$rk]->get();
-                if ($env) {
-                    try {
-                        //get 非阻塞调用  consume 阻塞调用
-                        $res = call_user_func([$rv, 'consume'], $env->getBody());
-                        if ($res) {
-                            //ack
-                            $this->_queue[$rk]->ack($env->getDeliveryTag());
-                        } else {
-                            //nack
-                            $this->_queue[$rk]->nack($env->getDeliveryTag());
-                        }
-                        call_user_func([$rv, 'onSuccess'], $env->getBody());
-                    } catch (\Exception $exception) {
-                        //抛出异常时 讲消息重新投递到队列中
-                        $this->_queue[$rk]->nack($env->getDeliveryTag(), AMQP_REQUEUE);
-                        call_user_func([$rv, 'onError'], $exception, $env->getBody());
+//        $this->client = BaseRabbitmq::instance();
+        $this->stompClient            = new Client('stomp://127.0.0.1:61613', array(
+            'login'    => $this->_rabbitMqConfig['username'],
+            'passcode' => $this->_rabbitMqConfig['password'],
+            'vhost'    => $this->_rabbitMqConfig['vhost'],
+        ));
+        $this->stompClient->onConnect = function (Client $client) {
+            // 订阅
+            foreach (self::$_router as $className => $object) {
+                var_dump($object->getQueneName());
+                $client->subscribe($object->getQueneName(), function (Client $client, $data) use ($object) {
+                    var_dump($data);
+                    var_dump($object->getQueneName());
+                    //消费调用
+                    $res = call_user_func([$object, 'consume'], $data['body']);
+                    if ($res) {
+                        call_user_func([$object, 'onSuccess'], $data['body']);
+                        $this->_ack($data['headers']['destination'],$data['headers']['message-id']);
+                    } else {
+                        $this->_nack($data['headers']['destination'],$data['headers']['message-id']);
                     }
-                }
-            });
+                });
+            }
+
+        };
+//        Timer::add(1, function () use ($this->stompClient) {
+//            // 发布
+//            $this->stompClient->send('/topic/foo', 'Hello Workerman STOMP');
+//        });
+        $this->stompClient->onError   = function ($e) {
+            $this->_log($e,'onError');
+        };
+        $this->stompClient->connect();
+    }
+
+    /**
+     * ack
+     * @param string $destination
+     * @param string $message_id
+     */
+    protected function _ack(string $destination,string $message_id)
+    {
+        try {
+            $this->stompClient->ack($destination, $message_id);
+            throw new \Exception('test');
+        } catch (\Exception $exception) {
+            $this->_log($exception, 'ACK', $destination. '_ack');
         }
     }
+
+    /**
+     * nack
+     * @param string $destination
+     * @param string $message_id
+     */
+    protected function _nack(string $destination,string $message_id)
+    {
+        try {
+            $this->stompClient->nack($destination, $message_id);
+        } catch (\Exception $exception) {
+            $this->_log($exception, 'NACK', $destination . '_nack');
+        }
+    }
+
+//    public function onWorkerStart(Worker $worker)
+//    {
+//        if (empty(self::$_router)) {
+//            $this->_exit('', 'empty router');
+//        }
+//        static::safeEcho(" ----------------------- work start ----------------------------- \r\n");
+//        $this->client = BaseRabbitmq::instance();
+//        //注册定时消费任务
+//        foreach (self::$_router as $rk => $rv) {
+//            $this->_queue[$rk]  = $this->client->createQueue($rk, $rv);
+//            $this->_timer_ids[] = Timer::add($rv->getTimeInterval(), function () use ($rk, $rv) {
+//                //get 非阻塞调用  consume 阻塞调用
+//                //get默认手动ack即AMQP_NOPARM 如果要自动ack则:AMQP_AUTOACK
+//                $env = $this->_queue[$rk]->get();
+//                if ($env) {
+//                    try {
+//                        //get 非阻塞调用  consume 阻塞调用
+//                        $res = call_user_func([$rv, 'consume'], $env->getBody());
+//                        if ($res) {
+//                            //ack
+//                            $this->_queue[$rk]->ack($env->getDeliveryTag());
+//                        } else {
+//                            //nack
+//                            $this->_queue[$rk]->nack($env->getDeliveryTag());
+//                        }
+//                        call_user_func([$rv, 'onSuccess'], $env->getBody());
+//                    } catch (\Exception $exception) {
+//                        //抛出异常时 讲消息重新投递到队列中
+//                        $this->_queue[$rk]->nack($env->getDeliveryTag(), AMQP_REQUEUE);
+//                        call_user_func([$rv, 'onError'], $exception, $env->getBody());
+//                    }
+//                }
+//            });
+//        }
+//    }
 
 
     public function onWorkerStop(Worker $worker)

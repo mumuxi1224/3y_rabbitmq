@@ -98,7 +98,6 @@ class BaseRabbitmq extends Instance
         //是否持久化
         if ($declare) {
             $this->_exchanges[$model_name]->setFlags(AMQP_DURABLE);
-
         }
         $this->_exchanges[$model_name]->declareExchange();
         return $this->_exchanges[$model_name];
@@ -145,6 +144,8 @@ class BaseRabbitmq extends Instance
             $this->getQueue($model_name, $queneRoute->getQueneName(), $queneRoute->getDurable(), $queneRoute->getExchangeName(), $queneRoute->getRouteKey());
         } catch (\Exception $exception) {
             var_dump($exception->getMessage());
+            var_dump($exception->getLine());
+            var_dump($exception->getFile());
             $this->_exception = $exception;
             return false;
         }
