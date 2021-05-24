@@ -40,6 +40,24 @@ class BaseQueneConsumer extends Worker
      * @var int
      */
     protected $_retryNum = 5;
+
+    /**
+     * 重试次数记录
+     * @var array
+     */
+    protected $_retryInfo = [];
+
+    /**
+     * 达到重试次数后重新加入队列处理
+     * @var array
+     */
+    protected $_retryQuene = [];
+
+    /**
+     * 重试队列是否正在运行中 防止重复运行
+     * @var bool
+     */
+    protected $_retryRunning = false;
     /**
      * 定时器id
      * @var array
@@ -50,7 +68,7 @@ class BaseQueneConsumer extends Worker
     {
         parent::__construct();
         $this->_rabbitMqConfig = $rabbitMq;
-        if (isset($rabbitMq['retry_num'])){
+        if (isset($rabbitMq['retry_num'])) {
             $this->_retryNum = $rabbitMq['retry_num'];
         }
         $this->_checkConnection($rabbitMq);
@@ -155,43 +173,79 @@ class BaseQueneConsumer extends Worker
         }
         static::safeEcho(" ----------------------- work start ----------------------------- \r\n");
 //        $this->client = BaseRabbitmq::instance();
-        $stomp = isset($this->_rabbitMqConfig['stomp'])?$this->_rabbitMqConfig['stomp']:'127.0.0.1:61613';
-        $this->stompClient            = new Client('stomp://'.$stomp, array(
+        $stomp                        = isset($this->_rabbitMqConfig['stomp']) ? $this->_rabbitMqConfig['stomp'] : '127.0.0.1:61613';
+        $this->stompClient            = new Client('stomp://' . $stomp, array(
             'login'    => $this->_rabbitMqConfig['username'],
             'passcode' => $this->_rabbitMqConfig['password'],
             'vhost'    => $this->_rabbitMqConfig['vhost'],
-            'debug'=>isset($this->_rabbitMqConfig['debug'])?$this->_rabbitMqConfig['debug']:false,
-            'ack'=>'client',
+            'debug'    => isset($this->_rabbitMqConfig['debug']) ? $this->_rabbitMqConfig['debug'] : false,
+            'ack'      => 'client',
         ));
         $this->stompClient->onConnect = function (Client $client) {
             // 订阅
             foreach (self::$_router as $className => $object) {
                 $client->subscribe($object->getQueneName(), function (Client $client, $data) use ($object) {
-                    //消费调用
-                    $res = call_user_func([$object, 'consume'], $data['body']);
-                    if ($res) {
-                        call_user_func([$object, 'onSuccess'], $data['body']);
-                        //删除掉可能存在的重试信息
-                        if (isset($this->_retry[$data['headers']['message-id']]))unset($this->_retry[$data['headers']['message-id']]);
-                        $this->_ack($data['headers']['destination'],$data['headers']['message-id']);
-                    } else {
-                        //记录重试次数  message-id 中会记录每条消息重发的次数
-                        $retryInfo = explode('@@',$data['headers']['message-id']);
-                        //消息ack|nack
-                        if ($this->_retryNum > 0  &&  $retryInfo[2] >= $this->_retryNum){
-                            call_user_func([$object, 'onRetryError'], $data['body']);
-                            $this->_ack($data['headers']['destination'],$data['headers']['message-id']);
-                        }else{
-                            $this->_nack($data['headers']['destination'],$data['headers']['message-id']);
+                    try {
+                        //消费调用
+                        $res = call_user_func([$object, 'consume'], $data['body']);
+                        list($clientId,$session,) = explode('@@',$data['headers']['message-id']);
+                        $retryKey = $clientId.$session.md5($data['body']);
+                        if ($res) {
+                            //删除可能存在的重试信息
+                            if (isset($this->_retryInfo[ $data['headers']['message-id'] .md5($data['body']) ]))unset($this->_retryInfo[ $retryKey ]);
+                            call_user_func([$object, 'onSuccess'], $data['body']);
+                            $this->_ack($data['headers']['destination'], $data['headers']['message-id']);
+                        } else {
+                            //记录重试次数
+                            if (isset($this->_retryInfo[ $retryKey ])){
+                                $this->_retryInfo[ $retryKey ] ++;
+                            }else{
+                                $this->_retryInfo[ $retryKey ] = 1;
+                            }
+                            if ($this->_retryNum > 0 && $this->_retryInfo[ $retryKey ] >= $this->_retryNum) {
+                                call_user_func([$object, 'onRetryError'], $data['body']);
+                                //先ack
+                                $this->_ack($data['headers']['destination'], $data['headers']['message-id']);
+                                //删除记录
+                                unset($this->_retryInfo[ $retryKey ]);
+                                //丢回重试队列
+                                $this->_retryQuene[] = [
+                                    'retry_time'=>time() + $object->getRetryTime(),
+                                    'data'=>$data,
+                                    'quene_name'=>$object->getQueneName(),
+                                ];
+                            } else {
+                                $this->_nack($data['headers']['destination'], $data['headers']['message-id']);
+                            }
                         }
+                    } catch (\Exception $exception) {
+                        call_user_func([$object, 'onException'], $data['body'], $exception);
+                        $this->_log($exception,'retryException');
                     }
                     //消息需要ack
-                },['ack'=>'client']);
+                }, ['ack' => 'client']);
             }
-
+            //重试队列
+            Timer::add(1,function ()use($client){
+                if ($this->_retryRunning)return;
+                $this->_retryRunning = true;
+                $now = time();
+                if ($this->_retryQuene){
+                    foreach ($this->_retryQuene as $k=>$v){
+                        if ($v['retry_time'] <=$now){
+                            $client->send($v['quene_name'], $v['data']['body']);
+                            unset($this->_retryQuene[$k]);
+                        }else{
+                            //顺序时间加入的
+                            break;
+                        }
+                    }
+                }
+                $this->_retryRunning = false;
+            });
         };
         $this->stompClient->onError   = function ($e) {
-            $this->_log($e,'onError');
+            $this->_log($e, 'onError');
         };
         $this->stompClient->connect();
     }
@@ -201,13 +255,13 @@ class BaseQueneConsumer extends Worker
      * @param string $destination
      * @param string $message_id
      */
-    protected function _ack(string $destination,string $message_id)
+    protected function _ack(string $destination, string $message_id)
     {
         try {
             $this->stompClient->ack($destination, $message_id);
             throw new \Exception('test');
         } catch (\Exception $exception) {
-            $this->_log($exception, 'ACK', $destination. '_ack');
+            $this->_log($exception, 'ACK', $destination . '_ack');
         }
     }
 
@@ -216,7 +270,7 @@ class BaseQueneConsumer extends Worker
      * @param string $destination
      * @param string $message_id
      */
-    protected function _nack(string $destination,string $message_id)
+    protected function _nack(string $destination, string $message_id)
     {
         try {
             $this->stompClient->nack($destination, $message_id);

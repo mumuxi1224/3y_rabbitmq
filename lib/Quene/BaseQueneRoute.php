@@ -51,14 +51,14 @@ abstract class BaseQueneRoute extends Instance
     }
 
     /**
-     * 每次执行消费的间隔时间
-     * @var float
+     * 消息达到重试次数后再次放回队列的时间
+     * @var int
      */
-    protected $time_interval = 0.1;
+    protected $retry_time = 60;
 
-    final public function getTimeInterval()
+    final public function getRetryTime()
     {
-        return (float)$this->time_interval;
+        return (int)$this->retry_time;
     }
 
     /**
@@ -107,6 +107,16 @@ abstract class BaseQueneRoute extends Instance
      * @param string $message
      */
     public function onRetryError(string $message)
+    {
+
+    }
+
+    /**
+     * 发送错误时候的回调
+     * @param string $message
+     * @param \Exception $exception
+     */
+    public function onException(string $message, \Exception $exception)
     {
 
     }
