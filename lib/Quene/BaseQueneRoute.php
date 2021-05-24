@@ -101,4 +101,13 @@ abstract class BaseQueneRoute extends Instance
     {
 
     }
+
+    /**
+     * 消息超过重试次数之后的回调
+     * @param string $message
+     */
+    public function onRetryError(string $message)
+    {
+
+    }
 }

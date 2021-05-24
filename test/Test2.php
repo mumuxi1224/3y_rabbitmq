@@ -5,8 +5,8 @@ use Mmx\Quene\BaseRabbitmq;
 
 class Test2 extends \Mmx\Quene\BaseQueneRoute {
     protected $exchange_name = 'test2_exchange_name';
-    protected $quene_name = 'test2_quene_name';
-
+    protected $quene_name = 'non_durable_quene';
+    protected $durable = true;
 //    public function consume(\AMQPEnvelope $envelope, \AMQPQueue $quene)
 //    {
 //        $msg = $envelope->getBody();
@@ -18,9 +18,8 @@ class Test2 extends \Mmx\Quene\BaseQueneRoute {
 
     public function consume(string $message): bool
     {
+
         var_dump('test2');
-        var_dump(date('Y-m-d H:i:s'));
-        var_dump($message);
-        return true;
+        return false;
     }
 }

@@ -24,9 +24,28 @@ class BaseQueneConsumer extends Worker
      */
     protected $client = null;
 
+    /**
+     * @var \Workerman\Stomp\Client
+     */
     protected $stompClient = null;
 
+    /**
+     * 配置信息
+     * @var array
+     */
     protected $_rabbitMqConfig = [];
+
+    /**
+     * 重试信息
+     * @var array
+     */
+    protected $_retry = [];
+
+    /**
+     * 最大重试次数|设置为0的时候表示一直nack
+     * @var int
+     */
+    protected $_retryNum = 5;
     /**
      * 定时器id
      * @var array
@@ -37,6 +56,9 @@ class BaseQueneConsumer extends Worker
     {
         parent::__construct();
         $this->_rabbitMqConfig = $rabbitMq;
+        if (isset($rabbitMq['retry_num'])){
+            $this->_retryNum = $rabbitMq['retry_num'];
+        }
         $this->_checkConnection($rabbitMq);
     }
 
@@ -139,34 +161,44 @@ class BaseQueneConsumer extends Worker
         }
         static::safeEcho(" ----------------------- work start ----------------------------- \r\n");
 //        $this->client = BaseRabbitmq::instance();
-        $this->stompClient            = new Client('stomp://127.0.0.1:61613', array(
+        $stomp = isset($this->_rabbitMqConfig['stomp'])?$this->_rabbitMqConfig['stomp']:'127.0.0.1:61613';
+        $this->stompClient            = new Client('stomp://'.$stomp, array(
             'login'    => $this->_rabbitMqConfig['username'],
             'passcode' => $this->_rabbitMqConfig['password'],
             'vhost'    => $this->_rabbitMqConfig['vhost'],
+            'debug'=>isset($this->_rabbitMqConfig['debug'])?$this->_rabbitMqConfig['debug']:false,
+            'ack'=>'client',
         ));
         $this->stompClient->onConnect = function (Client $client) {
             // 订阅
             foreach (self::$_router as $className => $object) {
-                var_dump($object->getQueneName());
                 $client->subscribe($object->getQueneName(), function (Client $client, $data) use ($object) {
-                    var_dump($data);
-                    var_dump($object->getQueneName());
                     //消费调用
                     $res = call_user_func([$object, 'consume'], $data['body']);
                     if ($res) {
                         call_user_func([$object, 'onSuccess'], $data['body']);
+                        //删除掉可能存在的重试信息
+                        if (isset($this->_retry[$data['headers']['message-id']]))unset($this->_retry[$data['headers']['message-id']]);
                         $this->_ack($data['headers']['destination'],$data['headers']['message-id']);
                     } else {
-                        $this->_nack($data['headers']['destination'],$data['headers']['message-id']);
+                        //记录重试次数
+                        if (isset($this->_retry[$data['headers']['message-id']])){
+                           $this->_retry[$data['headers']['message-id']]++;
+                        }else{
+                            $this->_retry[$data['headers']['message-id']] = 1;
+                        }
+                        if ($this->_retryNum > 0  && $this->_retry[$data['headers']['message-id']] > $this->_retryNum){
+                            $this->_ack($data['headers']['destination'],$data['headers']['message-id']);
+                            call_user_func([$object, 'onRetryError'], $data['body']);
+                        }else{
+                            $this->_nack($data['headers']['destination'],$data['headers']['message-id']);
+                        }
                     }
-                });
+                    //消息需要ack
+                },['ack'=>'client']);
             }
 
         };
-//        Timer::add(1, function () use ($this->stompClient) {
-//            // 发布
-//            $this->stompClient->send('/topic/foo', 'Hello Workerman STOMP');
-//        });
         $this->stompClient->onError   = function ($e) {
             $this->_log($e,'onError');
         };
