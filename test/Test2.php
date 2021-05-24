@@ -22,4 +22,9 @@ class Test2 extends \Mmx\Quene\BaseQueneRoute {
         var_dump('test2');
         return false;
     }
+
+    public function onRetryError(string $message)
+    {
+       var_dump($message);
+    }
 }

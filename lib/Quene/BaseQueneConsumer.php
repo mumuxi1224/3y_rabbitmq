@@ -36,12 +36,6 @@ class BaseQueneConsumer extends Worker
     protected $_rabbitMqConfig = [];
 
     /**
-     * 重试信息
-     * @var array
-     */
-    protected $_retry = [];
-
-    /**
      * 最大重试次数|设置为0的时候表示一直nack
      * @var int
      */
@@ -181,15 +175,12 @@ class BaseQueneConsumer extends Worker
                         if (isset($this->_retry[$data['headers']['message-id']]))unset($this->_retry[$data['headers']['message-id']]);
                         $this->_ack($data['headers']['destination'],$data['headers']['message-id']);
                     } else {
-                        //记录重试次数
-                        if (isset($this->_retry[$data['headers']['message-id']])){
-                           $this->_retry[$data['headers']['message-id']]++;
-                        }else{
-                            $this->_retry[$data['headers']['message-id']] = 1;
-                        }
-                        if ($this->_retryNum > 0  && $this->_retry[$data['headers']['message-id']] > $this->_retryNum){
-                            $this->_ack($data['headers']['destination'],$data['headers']['message-id']);
+                        //记录重试次数  message-id 中会记录每条消息重发的次数
+                        $retryInfo = explode('@@',$data['headers']['message-id']);
+                        //消息ack|nack
+                        if ($this->_retryNum > 0  &&  $retryInfo[2] >= $this->_retryNum){
                             call_user_func([$object, 'onRetryError'], $data['body']);
+                            $this->_ack($data['headers']['destination'],$data['headers']['message-id']);
                         }else{
                             $this->_nack($data['headers']['destination'],$data['headers']['message-id']);
                         }
