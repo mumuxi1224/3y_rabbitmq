@@ -3,7 +3,7 @@
 namespace Mmx\Quene;
 
 use Mmx\Core\Tool;
-use Workerman\Timer;
+use Workerman\Lib\Timer;
 use Workerman\Worker;
 use Workerman\Stomp\Client;
 
