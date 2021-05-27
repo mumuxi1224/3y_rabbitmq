@@ -65,7 +65,7 @@ abstract class BaseQueneRoute extends Instance
      * 消息是否持久化
      * @var bool
      */
-    protected $durable = false;
+    protected $durable = true;
 
     final public function getDurable()
     {

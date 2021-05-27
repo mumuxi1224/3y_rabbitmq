@@ -6,10 +6,11 @@ $rabbitMq = [
     'username' => 'admin',
     'password' => 'admin',
     'vhost'    => '/',
-    'stomp'     => '127.0.0.1:61613',
-    'debug'     =>true,
+    'stomp'    => '127.0.0.1:61613',
+    'debug'    => true,
 ];
-$conusme  = new \Mmx\Quene\BaseQueneConsumer($rabbitMq);
+
+$conusme = new \Mmx\Quene\BaseQueneConsumer($rabbitMq);
 // 将业务端队列注册到服务中
 $conusme->register(\Test\Test::class);
 $conusme->register(\Test\Test2::class);

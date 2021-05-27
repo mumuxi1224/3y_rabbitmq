@@ -324,9 +324,19 @@ class BaseQueneConsumer extends Worker
                 Timer::del($tv);
             }
         }
+        //是否有未处理的重试队列
+        if(!empty($this->_retryQuene)){
+            foreach ($this->_retryQuene as $v){
+                $this->stompClient->send($v['quene_name'], $v['data']['body']);
+            }
+            static::safeEcho(" ----------------------- retryQuene ".count($this->_retryQuene)." ----------------------------- \r\n");
+        }
         //关闭连接
         if ($this->client && $this->client instanceof BaseRabbitmq) {
             $this->client->closeConnection();
+        }
+        if ($this->stompClient && $this->stompClient instanceof Client){
+            $this->stompClient->close();
         }
         static::safeEcho(" ----------------------- work end ----------------------------- \r\n");
     }

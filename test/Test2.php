@@ -6,7 +6,6 @@ use Mmx\Quene\BaseRabbitmq;
 class Test2 extends \Mmx\Quene\BaseQueneRoute {
     protected $exchange_name = 'test2_exchange_name';
     protected $quene_name = 'non_durable_quene';
-    protected $durable = true;
 //    public function consume(\AMQPEnvelope $envelope, \AMQPQueue $quene)
 //    {
 //        $msg = $envelope->getBody();
