@@ -12,8 +12,8 @@
     "minimum-stability": "dev",
     "require": {
         "php":">=7",
-        "workerman/workerman": "dev-master",
-        "workerman/stomp": "dev-main"
+        "workerman/workerman": "3.5.*",
+        "workerman/stomp": "1.0.*"
     },
     "autoload":{
         "psr-4":{
