@@ -61,6 +61,16 @@ class BaseRabbitmq extends Instance
     }
 
     /**
+     * 静态的连接rabbitmq
+     * @param array $config
+     * @param float $timeout
+     * @return mixed
+     */
+    public static function Connection(array $config = [], float $timeout = 3.0){
+        return call_user_func([self::instance(),'getConnection'],$config,$timeout);
+    }
+
+    /**
      * 创建|获取通道
      * @param int|int $count
      * @return \AMQPChannel
@@ -211,3 +221,12 @@ class BaseRabbitmq extends Instance
         return (string)$data;
     }
 }
+
+
+class Rabbitmq{
+    public static function __callStatic($method, $params)
+    {
+        return call_user_func_array([new BaseRabbitmq(), $method], $params);
+    }
+}
+Rabbitmq::closeConnection();

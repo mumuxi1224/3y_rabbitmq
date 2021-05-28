@@ -72,15 +72,40 @@ abstract class BaseQueneRoute extends Instance
         return (bool)$this->durable;
     }
 
+    /**
+     * 存储上一条消息
+     * @var mixed
+     */
+    protected $lastMsg = null;
 
-//    abstract function consume(\AMQPEnvelope $env,\AMQPQueue $quene);
+    final public function setLastMsg($msg)
+    {
+        $this->ack = null;
+        return $this->lastMsg = $msg;
+    }
+
+    final public function getLastMag()
+    {
+        return $this->lastMsg;
+    }
+
+    protected $ack = null;
+
+    final public function setAck(bool $ack)
+    {
+        $this->ack = $ack;
+    }
+
+    final public function getAck()
+    {
+        return $this->ack;
+    }
 
     /**
      * 具体的消费方法，由业务端自己实现
      * @param string $message 如果传入的消息是字符串，则原样返回，否则返回json_encode后的字符串
-     * @return bool 如果返回true，则自动ack，如果返回false 则
      */
-    abstract function consume(string $message): bool;
+    abstract function consume(string $message);
 
     /**
      * 投递消息
@@ -103,15 +128,6 @@ abstract class BaseQueneRoute extends Instance
     }
 
     /**
-     * 消息超过重试次数之后的回调
-     * @param string $message
-     */
-    public function onRetryError(string $message)
-    {
-
-    }
-
-    /**
      * 发送错误时候的回调
      * @param string $message
      * @param \Exception $exception
@@ -119,5 +135,15 @@ abstract class BaseQueneRoute extends Instance
     public function onException(string $message, \Exception $exception)
     {
 
+    }
+
+    final public function ack()
+    {
+        $this->setAck(true);
+    }
+
+    public function nack()
+    {
+        $this->setAck(false);
     }
 }
