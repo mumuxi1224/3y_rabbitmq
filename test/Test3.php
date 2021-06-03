@@ -2,10 +2,10 @@
 
 namespace Test;
 
-class Test3 extends \Mmx\Quene\BaseQueneRoute
+class Test3 extends \Mmx\Queue\BaseQueueRoute
 {
     protected $exchange_name = 'test3_exchange_name';
-    protected $quene_name    = 'test3_quene';
+    protected $queue_name = 'test3_queue';
 
     public function consume(string $message): bool
     {

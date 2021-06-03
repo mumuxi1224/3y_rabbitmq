@@ -13,11 +13,12 @@
     "require": {
         "php":">=7",
         "workerman/workerman": "3.5.*",
-        "workerman/stomp": "1.0.*"
+        "workerman/stomp": "1.0.*",
+        "ext-amqp": "*"
     },
     "autoload":{
         "psr-4":{
-            "Mmx\\Quene\\": "lib/Quene",
+            "Mmx\\Queue\\": "lib/Queue",
             "Mmx\\Core\\": "lib/Core",
             "Test\\":"test"
         }

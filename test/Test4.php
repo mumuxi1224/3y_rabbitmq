@@ -1,9 +1,11 @@
 <?php
+
 namespace Test;
 
-class Test4 extends \Mmx\Quene\BaseQueneRoute {
+class Test4 extends \Mmx\Queue\BaseQueueRoute
+{
     protected $exchange_name = 'test4_exchange_name';
-    protected $quene_name = 'test4_quene';
+    protected $queue_name = 'test4_queue';
 
     public function consume(string $message): bool
     {

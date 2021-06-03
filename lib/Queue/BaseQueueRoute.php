@@ -1,10 +1,11 @@
 <?php
+declare(strict_types=1);
 
-namespace Mmx\Quene;
+namespace Mmx\Queue;
 
 use Mmx\Core\Instance;
 
-abstract class BaseQueneRoute extends Instance
+abstract class BaseQueueRoute extends Instance
 {
     /**
      * 交换机名称
@@ -12,7 +13,7 @@ abstract class BaseQueneRoute extends Instance
      */
     protected $exchange_name;
 
-    final public function getExchangeName()
+    final public function getExchangeName(): string
     {
         return (string)$this->exchange_name;
     }
@@ -21,9 +22,9 @@ abstract class BaseQueneRoute extends Instance
      * 交换机类型
      * @var string
      */
-    protected $exchange_type = AMQP_EX_TYPE_DIRECT;
+    protected $exchange_type = \AMQP_EX_TYPE_DIRECT;
 
-    final public function getExchangeType()
+    final public function getExchangeType(): string
     {
         return (string)$this->exchange_type;
     }
@@ -32,11 +33,11 @@ abstract class BaseQueneRoute extends Instance
      * 队列名称
      * @var string
      */
-    protected $quene_name;
+    protected $queue_name;
 
-    final public function getQueneName()
+    final public function getQueneName(): string
     {
-        return (string)$this->quene_name;
+        return (string)$this->queue_name;
     }
 
     /**
@@ -45,21 +46,21 @@ abstract class BaseQueneRoute extends Instance
      */
     protected $route_key = '';
 
-    final public function getRouteKey()
+    final public function getRouteKey(): string
     {
         return (string)$this->route_key;
     }
 
-    /**
-     * 消息达到重试次数后再次放回队列的时间
-     * @var int
-     */
-    protected $retry_time = 60;
-
-    final public function getRetryTime()
-    {
-        return (int)$this->retry_time;
-    }
+//    /**
+//     * 消息达到重试次数后再次放回队列的时间
+//     * @var int
+//     */
+//    protected $retry_time = 60;
+//
+//    final public function getRetryTime(): int
+//    {
+//        return (int)$this->retry_time;
+//    }
 
     /**
      * 消息是否持久化
@@ -67,11 +68,20 @@ abstract class BaseQueneRoute extends Instance
      */
     protected $durable = true;
 
-    final public function getDurable()
+    final public function getDurable(): bool
     {
         return (bool)$this->durable;
     }
 
+    /**
+     * @var int
+     */
+    protected $qos = 10;
+
+    final public function getQos(): int
+    {
+        return (int)$this->qos;
+    }
     /**
      * 存储上一条消息
      * @var mixed
@@ -89,6 +99,9 @@ abstract class BaseQueneRoute extends Instance
         return $this->lastMsg;
     }
 
+    /**
+     * @var null
+     */
     protected $ack = null;
 
     final public function setAck(bool $ack)
@@ -112,11 +125,12 @@ abstract class BaseQueneRoute extends Instance
      * @param $message
      * @return array
      */
-    public function publish($message)
+    public function publish($message): array
     {
         $route = call_user_func([get_called_class(), 'instance']);
         return BaseRabbitmq::instance()->publish($route, $message);
     }
+
 
     /**
      * 处理成功之后的回调

@@ -1,6 +1,6 @@
 <?php
-
-namespace Mmx\Quene;
+declare(strict_types=1);
+namespace Mmx\Queue;
 
 use Mmx\Core\Tool;
 use Workerman\Connection\TcpConnection;
@@ -8,10 +8,10 @@ use Workerman\Lib\Timer;
 use Workerman\Worker;
 use Workerman\Stomp\Client;
 
-class BaseQueneConsumer extends Worker
+class BaseQueueConsumer extends Worker
 {
     /**
-     * @var array
+     * @var BaseQueueRoute[]
      */
     protected static $_router = [];
 
@@ -21,12 +21,12 @@ class BaseQueneConsumer extends Worker
     public $_log_path = null;
 
     /**
-     * @var \AMQPConnection
+     * @var BaseRabbitmq
      */
     protected $client = null;
 
     /**
-     * @var \Workerman\Stomp\Client
+     * @var Client
      */
     protected $stompClient = null;
 
@@ -36,58 +36,70 @@ class BaseQueneConsumer extends Worker
      */
     protected $_rabbitMqConfig = [];
 
-    /**
-     * 最大重试次数|设置为0的时候表示一直nack
-     * @var int
-     */
-    protected $_retryNum = 5;
+//    /**
+//     * 最大重试次数|设置为0的时候表示一直nack
+//     * @var int
+//     */
+//    protected $_retryNum = 5;
 
     /**
-     * 缓冲区大小
+     * 缓冲区大小 单位：M
      * @var int
      */
     protected $_maxSendBufferSize = 2;
-    /**
-     * 重试次数记录
-     * @var array
-     */
-    protected $_retryInfo = [];
 
     /**
-     * 达到重试次数后重新加入队列处理
-     * @var array
+     * @var int stomp的qos
      */
+    protected $_prefetch_count = 1000;
+//    /**
+//     * 重试次数记录
+//     * @var array
+//     */
+//    protected $_retryInfo = [];
+
+//    /**
+//     * 达到重试次数后重新加入队列处理
+//     * @var array
+//     */
 //    protected $_retryQuene = [];
 
-    /**
-     * 重试队列是否正在运行中 防止重复运行
-     * @var bool
-     */
+//    /**
+//     * 重试队列是否正在运行中 防止重复运行
+//     * @var bool
+//     */
 //    protected $_retryRunning = false;
     /**
      * 定时器id
      * @var array
      */
     protected $_timer_ids = [];
-    protected $_print = [];
+
+    /**
+     * @throws \AMQPConnectionException
+     */
     public function __construct(array $rabbitMq = [])
     {
         parent::__construct();
         $this->_rabbitMqConfig = $rabbitMq;
-        if (isset($rabbitMq['retry_num'])) {
-            $this->_retryNum = $rabbitMq['retry_num'];
-        }
+//        if (isset($rabbitMq['retry_num'])) {
+//            $this->_retryNum = $rabbitMq['retry_num'];
+//        }
         $this->_checkConnection($rabbitMq);
+        //设置缓冲区
         if (isset($rabbitMq['maxSendBufferSize']) && is_numeric($rabbitMq['maxSendBufferSize']) && $rabbitMq['maxSendBufferSize'] > 0){
             $this->_maxSendBufferSize = $rabbitMq['maxSendBufferSize'];
         }
         TcpConnection::$defaultMaxSendBufferSize = $this->_maxSendBufferSize*1024*1024;
+        //设置qos
+        if (isset($rabbitMq['prefetch_count']) && is_numeric($rabbitMq['prefetch_count']) && $rabbitMq['prefetch_count'] > 0){
+            $this->_prefetch_count = $rabbitMq['prefetch_count'];
+        }
     }
 
     /**
      * 检查连接
      * @param array $config
-     * @throws \AMQPConnectionException
      */
     protected function _checkConnection(array $config)
     {
@@ -97,6 +109,7 @@ class BaseQueneConsumer extends Worker
             if (!$this->client->getConnection($config)->isConnected()) {
                 $this->_exit('', 'Queue Server Connection Failed');
             }
+            $this->client->closeConnection();
         } catch (\Exception $exception) {
             $this->_exit('Queue Server Connection Failed : ' . $exception->getMessage(), $exception->getCode());
         }
@@ -109,8 +122,8 @@ class BaseQueneConsumer extends Worker
      */
     public function register(string $className)
     {
-        //是否继承了基础BaseQueneRouter类
-        if (!is_subclass_of($className, BaseQueneRoute::class)) {
+        //是否继承了基础BaseQueueRouter类
+        if (!is_subclass_of($className, BaseQueueRoute::class)) {
             $this->_exit('subclass error');
         }
         //实例化类
@@ -123,7 +136,7 @@ class BaseQueneConsumer extends Worker
             $this->_exit($className . ':empty exchange type');
         }
         if (empty($router->getQueneName())) {
-            $this->_exit($className . ':empty quene name');
+            $this->_exit($className . ':empty queue name');
         }
         self::$_router[$className] = $router;
     }
@@ -132,7 +145,7 @@ class BaseQueneConsumer extends Worker
      * 批量注册
      * @param array $classNameArray
      */
-    public function registerMult(array $classNameArray)
+    public function registerMulti(array $classNameArray)
     {
         foreach ($classNameArray as $v) {
             $this->register($v);
@@ -159,7 +172,7 @@ class BaseQueneConsumer extends Worker
      * @param $tag
      * @param string $module
      */
-    protected function _log($log, $tag, $module = 'consume')
+    protected function _log($log, $tag, string $module = 'consume')
     {
         if ($this->_log_path) {
             if ($log instanceof \Exception) {
@@ -182,91 +195,39 @@ class BaseQueneConsumer extends Worker
             $this->_exit('', 'empty router');
         }
         static::safeEcho(" ----------------------- work start ----------------------------- \r\n");
-//        $this->client = BaseRabbitmq::instance();
-        $stomp                        = isset($this->_rabbitMqConfig['stomp']) ? $this->_rabbitMqConfig['stomp'] : '127.0.0.1:61613';
+        $stomp                        = $this->_rabbitMqConfig['stomp'] ?? '127.0.0.1:61613';
         $this->stompClient            = new Client('stomp://' . $stomp, array(
             'login'    => $this->_rabbitMqConfig['username'],
             'passcode' => $this->_rabbitMqConfig['password'],
             'vhost'    => $this->_rabbitMqConfig['vhost'],
-            'debug'    => isset($this->_rabbitMqConfig['debug']) ? $this->_rabbitMqConfig['debug'] : false,
+            'debug'    => $this->_rabbitMqConfig['debug'] ?? false,
             'ack'      => 'client',
         ));
+
         $this->stompClient->onConnect = function (Client $client) {
             // 订阅
             foreach (self::$_router as $className => $object) {
-                $this->_print[$object->getQueneName()] = ['count'=>0,'fail'=>0,'success'=>0];
                 $client->subscribe($object->getQueneName(), function (Client $client, $data) use ($object) {
                     try {
+                        var_dump($data['body']);
                         //存储上一条消息
-                        call_user_func([$object, 'setLastMsg'], $data);
+//                        call_user_func([$object, 'setLastMsg'], $data);
                         //消费调用
                         call_user_func([$object, 'consume'], $data['body']);
                         //
                         $hasAck = call_user_func([$object, 'getAck']);
-                        $this->_print[$object->getQueneName()]['count'] ++;
                         if (null === $hasAck || true === $hasAck) {
-                            $this->_print[$object->getQueneName()]['success'] ++;
                             $this->_ack($data['headers']['destination'], $data['headers']['message-id']);
                         } else {
-                            $this->_print[$object->getQueneName()]['fail'] ++;
                             $this->_nack($data['headers']['destination'], $data['headers']['message-id']);
                         }
-//                        list($clientId,$session,) = explode('@@',$data['headers']['message-id']);
-//                        $retryKey = $clientId.$session.md5($data['body']);
-//                        if ($res) {
-//                            //删除可能存在的重试信息
-//                            if (isset($this->_retryInfo[ $data['headers']['message-id'] .md5($data['body']) ]))unset($this->_retryInfo[ $retryKey ]);
-//                            call_user_func([$object, 'onSuccess'], $data['body']);
-//
-//                            $this->_ack($data['headers']['destination'], $data['headers']['message-id']);
-//                        } else {
-//                            //记录重试次数
-//                            if (isset($this->_retryInfo[ $retryKey ])){
-//                                $this->_retryInfo[ $retryKey ] ++;
-//                            }else{
-//                                $this->_retryInfo[ $retryKey ] = 1;
-//                            }
-//                            if ($this->_retryNum > 0 && $this->_retryInfo[ $retryKey ] >= $this->_retryNum) {
-//                                call_user_func([$object, 'onRetryError'], $data['body']);
-//                                //先ack
-//                                $this->_ack($data['headers']['destination'], $data['headers']['message-id']);
-//                                //删除记录
-//                                unset($this->_retryInfo[ $retryKey ]);
-//                                //丢回重试队列
-//                                $this->_retryQuene[] = [
-//                                    'retry_time'=>time() + $object->getRetryTime(),
-//                                    'data'=>$data,
-//                                    'quene_name'=>$object->getQueneName(),
-//                                ];
-//                            } else {
-//                                $this->_nack($data['headers']['destination'], $data['headers']['message-id']);
-//                            }
-//                        }
                     } catch (\Exception $exception) {
                         call_user_func([$object, 'onException'], $data['body'], $exception);
                         $this->_log($exception, 'retryException');
                     }
-                    //消息需要ack
-                }, ['ack' => 'client']);
+                    //消息需要ack  设置qos
+                }, ['ack' => 'client','prefetch-count'=>$this->_prefetch_count]);
             }
-            //重试队列
-//            Timer::add(1,function ()use($client){
-//                if ($this->_retryRunning)return;
-//                $this->_retryRunning = true;
-//                $now = time();
-//                if ($this->_retryQuene){
-//                    foreach ($this->_retryQuene as $k=>$v){
-//                        if ($v['retry_time'] <=$now){
-//                            $client->send($v['quene_name'], $v['data']['body']);
-//                            unset($this->_retryQuene[$k]);
-//                        }else{
-//                            //顺序时间加入的
-//                            break;
-//                        }
-//                    }
-//                }
-//                $this->_retryRunning = false;
-//            });
         };
         $this->stompClient->onError   = function ($e) {
             $this->_log($e, 'onError');
@@ -277,12 +238,12 @@ class BaseQueneConsumer extends Worker
     /**
      * ack
      * @param string $destination
-     * @param string $message_id
+     * @param string $messageId
      */
-    protected function _ack(string $destination, string $message_id)
+    protected function _ack(string $destination, string $messageId)
     {
         try {
-            $this->stompClient->ack($destination, $message_id);
+            $this->stompClient->ack($destination, $messageId);
         } catch (\Exception $exception) {
             $this->_log($exception, 'ACK', $destination . '_ack');
         }
@@ -291,53 +252,16 @@ class BaseQueneConsumer extends Worker
     /**
      * nack
      * @param string $destination
-     * @param string $message_id
+     * @param string $messageId
      */
-    protected function _nack(string $destination, string $message_id)
+    protected function _nack(string $destination, string $messageId)
     {
         try {
-            $this->stompClient->nack($destination, $message_id);
+            $this->stompClient->nack($destination, $messageId);
         } catch (\Exception $exception) {
             $this->_log($exception, 'NACK', $destination . '_nack');
         }
     }
-
-//    public function onWorkerStart(Worker $worker)
-//    {
-//        if (empty(self::$_router)) {
-//            $this->_exit('', 'empty router');
-//        }
-//        static::safeEcho(" ----------------------- work start ----------------------------- \r\n");
-//        $this->client = BaseRabbitmq::instance();
-//        //注册定时消费任务
-//        foreach (self::$_router as $rk => $rv) {
-//            $this->_queue[$rk]  = $this->client->createQueue($rk, $rv);
-//            $this->_timer_ids[] = Timer::add($rv->getTimeInterval(), function () use ($rk, $rv) {
-//                //get 非阻塞调用  consume 阻塞调用
-//                //get默认手动ack即AMQP_NOPARM 如果要自动ack则:AMQP_AUTOACK
-//                $env = $this->_queue[$rk]->get();
-//                if ($env) {
-//                    try {
-//                        //get 非阻塞调用  consume 阻塞调用
-//                        $res = call_user_func([$rv, 'consume'], $env->getBody());
-//                        if ($res) {
-//                            //ack
-//                            $this->_queue[$rk]->ack($env->getDeliveryTag());
-//                        } else {
-//                            //nack
-//                            $this->_queue[$rk]->nack($env->getDeliveryTag());
-//                        }
-//                        call_user_func([$rv, 'onSuccess'], $env->getBody());
-//                    } catch (\Exception $exception) {
-//                        //抛出异常时 讲消息重新投递到队列中
-//                        $this->_queue[$rk]->nack($env->getDeliveryTag(), AMQP_REQUEUE);
-//                        call_user_func([$rv, 'onError'], $exception, $env->getBody());
-//                    }
-//                }
-//            });
-//        }
-//    }
-
 
     public function onWorkerStop(Worker $worker)
     {
@@ -361,7 +285,6 @@ class BaseQueneConsumer extends Worker
         if ($this->stompClient && $this->stompClient instanceof Client) {
             $this->stompClient->close();
         }
-        var_dump($this->_print);
         static::safeEcho(" ----------------------- work end ----------------------------- \r\n");
     }
 }
