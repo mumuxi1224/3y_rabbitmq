@@ -26,9 +26,9 @@ composer require mumuxi1224/3y_rabbitmq
 <?php
 namespace Test;
 
-class Test2 extends \Mmx\Quene\BaseQueneRoute {
+class Test2 extends \Mmx\Queue\BaseQueueRoute {
     protected $exchange_name = 'test2_exchange_name';
-    protected $quene_name = 'test2_quene';
+    protected $queue_name = 'test2_queue';
 
     public function consume(string $message)
     {
@@ -55,7 +55,7 @@ $rabbitMq = [
     'vhost'    => '/',
 ];
 $stime    = microtime(true);
-$conusme  = \Mmx\Quene\BaseRabbitmq::Connection($rabbitMq);
+\Mmx\Queue\BaseRabbitmq::Connection($rabbitMq);
 $etime    = microtime(true);
 var_dump('连接耗时时间' . ($etime - $stime));
 $result = [
@@ -67,21 +67,25 @@ $result = [
 ];
 $stime  = microtime(true);
 $start  = memory_get_usage(true);
-$limit  = 50000;
+$limit  = 10000;
 for ($i = 1; $i <= $limit; $i++) {
+//    $bastRabbitMq = new \Mmx\Quene\BaseRabbitmq();
+//    $bastRabbitMq->testGetConnection($rabbitMq);
+//    $bastRabbitMq->publish(new \Test\Test3,1);
     list($res1,) = \Test\Test::instance()->publish(uniqid());
     if (!$res1) $result['test1']++;
     list($res2,) = \Test\Test2::instance()->publish(uniqid());
     if (!$res2) $result['test2']++;
     list($res3,) = \Test\Test3::instance()->publish(uniqid());
     if (!$res3) $result['test3']++;
-    list($res4,) = \Test\Test4::instance()->publish(uniqid());
-    if (!$res4) $result['test4']++;
-    list($res5,) = \Test\Test5::instance()->publish(uniqid());
-    if (!$res5) $result['test5']++;
+//    list($res4,) = \Test\Test4::instance()->publish(uniqid());
+//    if (!$res4) $result['test4']++;
+//    list($res5,) = \Test\Test5::instance()->publish(uniqid());
+//    if (!$res5) $result['test5']++;
 }
 $etime = microtime(true);
 $end   = memory_get_usage(true);
+var_dump('投递数量' . ($limit *1));
 var_dump('耗时时间' . ($etime - $stime));
 var_dump('内存占用：' . round(($end - $start) / 1024 / 1024, 2) . 'MB');
 foreach ($result as $k => $v) {
@@ -89,12 +93,14 @@ foreach ($result as $k => $v) {
 }
 var_dump($result);
 
+
 ```
 
 consume实例
 
 ```
 <?php
+
 require './vendor/autoload.php';
 $rabbitMq = [
     'host'              => '192.168.4.92',
@@ -104,25 +110,38 @@ $rabbitMq = [
     'vhost'             => '/',
     'stomp'             => '192.168.4.92:61615',
     'debug'             => false,
-    'maxSendBufferSize' => 5,
+    'maxSendBufferSize' => 10,
+    'prefetch_count'    => 1500,
 ];
-$conusme  = new \Mmx\Quene\BaseQueneConsumer($rabbitMq);
+$conusme  = new \Mmx\Queue\BaseQueueConsumer($rabbitMq);
+//$rdsConfig = [
+//    'host'       => '192.168.4.228',
+//    'port'       => '6379',
+//    'password'   => 'Redis@fanjiao',
+//    'select'     => 0,
+//    'timeout'    => 2.5,   # 秒为单位
+//    'expire'     => 0,
+//    'persistent' => false, # 持久化
+//    'prefix'     => '',
+//    'index'      => 17
+//];
+//$redis = BaseRedis::getConnection($rdsConfig);
+
 // 将业务端队列注册到服务中
 $conusme->register(\Test\Test::class);
-$conusme->register(\Test\Test2::class);
-$conusme->register(\Test\Test3::class);
-$conusme->register(\Test\Test4::class);
-$conusme->register(\Test\Test5::class);
+//$conusme->register(\Test\Test2::class);
+//$conusme->register(\Test\Test3::class);
+//$conusme->register(\Test\Test4::class);
+//$conusme->register(\Test\Test5::class);
 // 批量注册
-//$conusme->registerMult([\Test\Test3::class,\Test\Test4::class,\Test\Test5::class]);
+$conusme->registerMulti([\Test\Test3::class,\Test\Test4::class,\Test\Test5::class]);
 // 进程数
-$conusme->count = 4;
+$conusme->count = 3;
 //日志
 $conusme->_log_path = 'log';
 // 端口复用
 $conusme->reusePort = true;
-maxSendBufferSize
 // 启动服务
-\Mmx\Quene\BaseQueneConsumer::runAll();
+\Mmx\Queue\BaseQueueConsumer::runAll();
 ```
 
