@@ -8,11 +8,24 @@
 rabbitmq-plugins enable rabbitmq_stomp
 ```
 
-consume()方法：消费队列时的回调，传入的是字符串格式的消息，返回true时会自动确认（ack）,返回false会重试一定次数（nack）后如果还是false会将消息重新投递到队列底部
+consume()方法：消费队列时的回调，传入的是字符串格式的消息，手动调用ack()或不调用，会在consume()方法执行完毕后执行ack，调用nack(),会在consume()方法执行完毕后执行nack
 
 onSuccess()方法：消费成功后的回调，传入的是字符串格式的消息
 
-
+消费时传入rabbitMq的参数实例：
+```
+$rabbitMq = [
+    'host'              => '192.168.4.92', 
+    'port'              => '5673',
+    'username'          => 'admin',
+    'password'          => 'admin',
+    'vhost'             => '/',
+    'stomp'             => '192.168.4.92:61615', //stomp监听的地址
+    'debug'             => false, //是否开启debug，开启后每次stomp的行为都有相应输出
+    'maxSendBufferSize' => 10, //最大缓冲区的大小，单位M
+    'prefetch_count'    => 10, //stomp每次最多预读值的大小，与rabbimt中channel设置qos的行为一样
+];
+```
 
 安装：
 
@@ -33,6 +46,7 @@ class Test2 extends \Mmx\Queue\BaseQueueRoute {
     public function consume(string $message)
     {
         $this->ack();
+//        $this->nack();
     }
 
     public function onRetryError(string $message)
