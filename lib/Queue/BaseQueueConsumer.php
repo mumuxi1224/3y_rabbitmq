@@ -111,7 +111,7 @@ class BaseQueueConsumer extends Worker
             }
             $this->client->closeConnection();
         } catch (\Exception $exception) {
-            $this->_exit('Queue Server Connection Failed : ' . $exception->getMessage(), $exception->getCode());
+            $this->_exit('Queue Server Connection Failed : ' . $exception->getMessage());
         }
         static::safeEcho(" > <w>Connection succeeded ...</w> \r\n");
     }
