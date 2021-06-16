@@ -109,7 +109,8 @@ class BaseQueueConsumer extends Worker
             if (!$this->client->getConnection($config)->isConnected()) {
                 $this->_exit('', 'Queue Server Connection Failed');
             }
-            $this->client->closeConnection();
+            //不关闭连接 如果后面的队列有需要重新投递消息的可以直接调用基类publish（）方法
+//            $this->client->closeConnection();
         } catch (\Exception $exception) {
             $this->_exit('Queue Server Connection Failed : ' . $exception->getMessage());
         }
