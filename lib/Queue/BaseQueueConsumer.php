@@ -210,7 +210,7 @@ class BaseQueueConsumer extends Worker
             foreach (self::$_router as $className => $object) {
                 $client->subscribe($object->getQueneName(), function (Client $client, $data) use ($object) {
                     try {
-                        var_dump($data['body']);
+//                        var_dump($data['body']);
                         //存储上一条消息
 //                        call_user_func([$object, 'setLastMsg'], $data);
                         //消费调用
